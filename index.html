@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Guide de jeux Switch</title>
+  <style>
+    :root {
+      --red:#E60012; --ink:#1B1B1B; --sub:#4A4A4A; --bg:#F6F7F9; --border:#D9DEE7;
+    }
+    body { margin:0; font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:var(--ink); background:#fff; }
+    header { position:sticky; top:0; z-index:10; background:var(--red); color:#fff; padding:14px 18px; font-weight:700; }
+    .wrap { display:flex; min-height:100vh; }
+    aside { width:290px; border-right:1px solid var(--border); padding:14px; position:sticky; top:52px; height:calc(100vh - 52px); overflow:auto; background:#fff; }
+    main { flex:1; padding:18px; background:#fafafa; }
+    .card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:14px; margin:12px 0; box-shadow:0 1px 0 rgba(0,0,0,.03); }
+    .title { font-size:18px; font-weight:800; margin:0 0 6px; }
+    .meta { display:flex; gap:10px; flex-wrap:wrap; color:var(--sub); font-size:13px; margin:6px 0 10px; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-weight:800; color:#fff; font-size:12px; }
+    .badge.fr { background:#0055A4; } .badge.en { background:#1F2A44; }
+    .banner { width:100%; max-height:220px; object-fit:cover; border-radius:12px; border:1px solid var(--border); background:var(--bg); }
+    .grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; margin-top:10px; }
+    .shot { width:100%; border-radius:12px; border:1px solid var(--border); background:var(--bg); }
+    .panel { background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:10px; margin:10px 0; }
+    .muted { color:var(--sub); }
+    .row { display:flex; gap:10px; align-items:center; }
+    .row img.icon { width:42px; height:42px; border-radius:10px; border:1px solid var(--border); background:var(--bg); object-fit:cover; }
+    input, select { width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); margin:6px 0 12px; }
+    details { margin-bottom:10px; }
+    summary { cursor:pointer; font-weight:700; margin-bottom:6px; }
+    .count { font-size:12px; color:var(--sub); }
+    @media (max-width: 900px) {
+      aside { display:none; }
+      .grid { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<header>Guide de jeux Switch — HTML</header>
+<div class="wrap">
+  <aside>
+    <div class="count" id="count"></div>
+
+    <label>Recherche</label>
+    <input id="q" placeholder="Mario, co-op, etc." />
+
+    <label>Langue</label>
+    <select id="lang">
+      <option value="">Toutes</option>
+      <option value="FR">FR</option>
+      <option value="EN">EN</option>
+    </select>
+
+    <label>Catégorie (high-level)</label>
+    <select id="category"></select>
+
+    <label>Catégorie (détaillée: api_category)</label>
+    <select id="api_category"></select>
+
+    <label>Joueurs (local sur 1 Switch)</label>
+    <select id="players">
+      <option value="">Tous</option>
+      <option value="1">1</option>
+      <option value="2">2+</option>
+      <option value="4">4+</option>
+      <option value="6">6+</option>
+      <option value="8">8+</option>
+    </select>
+
+    <button id="reset" style="width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:#fff; font-weight:800;">
+      Réinitialiser
+    </button>
+  </aside>
+
+  <main>
+    <div id="list"></div>
+  </main>
+</div>
+
+<script>
+async function main(){
+  const data = await fetch("data.json").then(r => r.json());
+  const els = {
+    q: document.getElementById("q"),
+    lang: document.getElementById("lang"),
+    category: document.getElementById("category"),
+    api_category: document.getElementById("api_category"),
+    players: document.getElementById("players"),
+    list: document.getElementById("list"),
+    count: document.getElementById("count"),
+    reset: document.getElementById("reset"),
+  };
+
+  function uniq(arr){ return [...new Set(arr)].filter(Boolean).sort((a,b)=>a.localeCompare(b)); }
+
+  // Populate category selects
+  els.category.innerHTML = '<option value="">Toutes</option>' + uniq(data.map(x=>x.category)).map(v=>`<option>${escapeHtml(v)}</option>`).join("");
+  els.api_category.innerHTML = '<option value="">Toutes</option>' + uniq(data.map(x=>x.api_category)).map(v=>`<option>${escapeHtml(v)}</option>`).join("");
+
+  function escapeHtml(s){
+    return (s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+  }
+
+  function matchPlayers(item, threshold){
+    if(!threshold) return true;
+    const t = parseInt(threshold,10);
+    if(!item.localMax && !item.localMin) return false;
+    const maxP = item.localMax ?? item.localMin;
+    if(t === 1) return (item.localMin === 1 && (item.localMax === 1 || item.localMax == null));
+    return (maxP != null && maxP >= t);
+  }
+
+  function apply(){
+    const q = (els.q.value||"").trim().toLowerCase();
+    const lang = els.lang.value;
+    const cat = els.category.value;
+    const api = els.api_category.value;
+    const players = els.players.value;
+
+    const filtered = data.filter(it => {
+      if(lang && it.lang !== lang) return false;
+      if(cat && it.category !== cat) return false;
+      if(api && it.api_category !== api) return false;
+      if(players && !matchPlayers(it, players)) return false;
+      if(q){
+        const blob = [
+          it.game, it.category, it.api_category, it.publisher,
+          it.intro_fr, it.description_fr, it.ratingContent
+        ].join(" ").toLowerCase();
+        if(!blob.includes(q)) return false;
+      }
+      return true;
+    });
+
+    els.count.textContent = filtered.length + " jeu(x) affiché(s)";
+
+    els.list.innerHTML = filtered.map(it => {
+      const badgeClass = it.lang === "FR" ? "fr" : "en";
+      const banner = it.banner ? `<img class="banner" src="${it.banner}" alt="">` : "";
+      const icon = it.icon ? `<img class="icon" src="${it.icon}" alt="">` : "";
+      const shots = (it.shots||[]).length ? `
+        <div class="grid">
+          ${(it.shots||[]).slice(0,4).map(s=>`<img class="shot" src="${s}" alt="">`).join("")}
+        </div>` : "";
+
+      const metaBits = [
+        it.releaseDate ? `Sortie: ${escapeHtml(it.releaseDate)}` : null,
+        it.publisher ? `Éditeur: ${escapeHtml(it.publisher)}` : null,
+        it.localLabel ? `Local: ${escapeHtml(it.localLabel)}` : null,
+      ].filter(Boolean).join(" • ");
+
+      const intro = it.intro_fr ? `<div><b>${escapeHtml(it.intro_fr)}</b></div>` : `<div class="muted"><i>Pas d’intro disponible.</i></div>`;
+      const desc  = it.description_fr ? `<div style="margin-top:6px;">${escapeHtml(it.description_fr)}</div>` : `<div class="muted" style="margin-top:6px;"><i>Pas de description disponible.</i></div>`;
+
+      const details = `
+        <details>
+          <summary>Détails (catégories / PEGI)</summary>
+          <div class="panel">
+            <div><b>api_category</b><br><span class="muted">${escapeHtml(it.api_category || "—")}</span></div>
+            <div style="margin-top:10px;"><b>Contenu / PEGI</b><br><span class="muted">${escapeHtml(it.ratingContent || "—")}</span></div>
+          </div>
+        </details>`;
+
+      return `
+        <div class="card">
+          <div class="row">
+            ${icon}
+            <div style="flex:1;">
+              <div class="title">${escapeHtml(it.game)}</div>
+              <div class="meta">
+                <span class="badge ${badgeClass}">${it.lang}</span>
+                <span>${escapeHtml(it.category)}</span>
+                <span>${escapeHtml(metaBits)}</span>
+              </div>
+            </div>
+          </div>
+          ${banner}
+          <div style="margin-top:10px;">
+            ${intro}
+            ${desc}
+          </div>
+          ${details}
+          ${shots}
+        </div>`;
+    }).join("");
+  }
+
+  // wire events
+  [els.q, els.lang, els.category, els.api_category, els.players].forEach(el => el.addEventListener("input", apply));
+  els.reset.addEventListener("click", () => {
+    els.q.value = "";
+    els.lang.value = "";
+    els.category.value = "";
+    els.api_category.value = "";
+    els.players.value = "";
+    apply();
+  });
+
+  apply();
+}
+main();
+</script>
+</body>
+</html>
